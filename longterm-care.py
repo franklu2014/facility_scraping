@@ -1,6 +1,9 @@
 #!/usr/bin/env python
 # coding: utf-8
 
+# In[1]:
+
+
 import pandas as pd
 import numpy as np
 from functools import reduce
@@ -39,9 +42,9 @@ def getPageText(name, isMain = False):
     if pd.isna(name):
         return set()
     headers = {'User-Agent': USER_AGENT}   
-    time.sleep(random.randint(1, 3))
+    time.sleep(random.randint(1, 4))
     if random.randint(1, 11) % 10 == 0:
-        time.sleep(random.randint(2, 4))
+        time.sleep(random.randint(2, 5))
     ret = na_str
     try:
         if isMain:
@@ -64,7 +67,7 @@ def getPageText(name, isMain = False):
 
 def getFacilities(webpage):
     return [(div.a.text, div.a['href']) for div in \
-                webpage.findAll('div', {'class': 'col-md-12 qf-search-record'})]
+            webpage.findAll('div', {'class': 'col-md-12 qf-search-record'})]
 
 def parseAuthority(authority):
     main_text = getPageText(authority, isMain = True)
@@ -78,6 +81,7 @@ def parseAuthority(authority):
         sub_page = BeautifulSoup(getPageText(link))
         locs += getFacilities(sub_page)
     return locs
+
 
 def parseTable(tbl, offset = 0):
     tds = tbl.findAll(lambda tag: tag.name == 'td')
@@ -95,9 +99,7 @@ def getLocation(url):
     bed_idx, bed_val = parseTable(loc1_bed)
     room_idx, room_val = parseTable(loc1_room)
     link_str = 'Link to web page'
-    loc1_link = loc1.findAll(lambda x: x.name == 'table' \
-                                 and x.th is not None \
-                                 and x.th.text == link_str)[0]
+    loc1_link = loc1.findAll(lambda x: x.name == 'table' and x.th is not None and x.th.text == link_str)[0]
     link_idx, link_val = [link_str], [loc1_link.td.a['href']]
     vals = head_val + fac_val + bed_val + room_val + link_val
     idxes = head_idx + fac_idx + bed_idx + room_idx + link_idx
@@ -105,27 +107,33 @@ def getLocation(url):
 
 def buildDf(auth):
     df = pd.DataFrame()
-    locs = parseAuthority(authority)
+    locs = parseAuthority(auth)
     for loc in locs:
         url = loc[1]
         df = df.append(getLocation(url), ignore_index = True)
-    return df
+    cols = [header for header in df.columns if not re.findall(r'^\W', header)]
+    return df[cols]
+
 
 def main():
     with open('./logging.conf', 'r') as f:
         cfg = yaml.safe_load(f.read())
         logging.config.dictConfig(cfg)
-    logger = logging.getLogger('all')
+
+    logger = logging.getLogger('longterm-care')
     logger.info('Start logging for longterm-care facility scrapping.')
     
-    res = dict()
+    res = pd.DataFrame()
     for authority in mapp.keys():
         df = buildDf(authority)
-        res[authority] = df
+        try:
+            res = res.append(df, ignore_index = True)
+        except:
+            logger.error('Couldn\'t load %s', authority)
 
     with pd.ExcelWriter('longterm-care.xlsx') as writer:
-        for name, tbl in res.items():
-            tbl.to_excel(writer, sheet_name = name, index = False)
+        res.to_excel(writer, sheet_name = 'longterm-care', index = False)
 
+    
 if __name__ == '__main__':
     main()
